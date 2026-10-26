@@ -175,41 +175,70 @@ async function getCoords() {
   } catch { return null; }
 }
 
-async function fetchRestaurants(lat, lon, radiusKm) {
-  const radiusM = radiusKm * 1000;
-  const query = `[out:json][timeout:25];(node["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon});way["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon}););out center tags;`;
-  const r = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(query),
-  });
-  if (!r.ok) throw new Error('Restaurant lookup failed');
-  const data = await r.json();
-  const seen = new Set();
-  return (data.elements || [])
-    .filter(el => el.tags && el.tags.name && !seen.has(el.tags.name.toLowerCase()) && !seen.add(el.tags.name.toLowerCase()))
-    .map(el => {
-      const plat = el.lat ?? el.center?.lat;
-      const plon = el.lon ?? el.center?.lon;
-      return {
-        id: 'r-' + uid(),
-        type: 'restaurant',
-        name: el.tags.name,
-        cuisine: el.tags.cuisine ? el.tags.cuisine.split(';')[0] : '',
-        address: [el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(', '),
-        lat: plat, lon: plon,
-        distance: (plat && plon) ? haversine(lat, lon, plat, plon) : null,
-        featured: false, // v2 monetization slot: paid featured restaurants sort first
-      };
-    })
-    .sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99))
-    .slice(0, 30);
+const OVERPASS_INSTANCES = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
+async function fetchRestaurants(lat, lon, radiusMiles) {
+  const radiusM = Math.round(radiusMiles * 1609.34);
+  // Bigger areas need more server time; cap the query timeout sensibly.
+  const queryTimeout = radiusMiles >= 25 ? 60 : 30;
+  const query = `[out:json][timeout:${queryTimeout}];(node["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon});way["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon}););out center tags;`;
+
+  let lastError = null;
+  for (const endpoint of OVERPASS_INSTANCES) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      const r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error(`Map server returned ${r.status}`);
+      const data = await r.json();
+      // Overpass reports timeouts/overloads in `remark` with no elements — treat as failure, not "0 results".
+      if (data.remark && (!data.elements || data.elements.length === 0)) {
+        throw new Error('Map query timed out on the server');
+      }
+      const seen = new Set();
+      const spots = (data.elements || [])
+        .filter(el => el.tags && el.tags.name && !seen.has(el.tags.name.toLowerCase()) && !seen.add(el.tags.name.toLowerCase()))
+        .map(el => {
+          const plat = el.lat ?? el.center?.lat;
+          const plon = el.lon ?? el.center?.lon;
+          const distKm = (plat && plon) ? haversine(lat, lon, plat, plon) : null;
+          return {
+            id: 'r-' + uid(),
+            type: 'restaurant',
+            name: el.tags.name,
+            cuisine: el.tags.cuisine ? el.tags.cuisine.split(';')[0] : '',
+            address: [el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(', '),
+            lat: plat, lon: plon,
+            distanceMi: distKm != null ? distKm * 0.621371 : null,
+            featured: false, // v2 monetization slot: paid featured restaurants sort first
+          };
+        })
+        .sort((a, b) => (a.distanceMi ?? 999) - (b.distanceMi ?? 999))
+        .slice(0, 30);
+      return spots;
+    } catch (e) {
+      lastError = e;
+      // Try the next mirror; if all fail, the caller reports it.
+    }
+  }
+  throw lastError || new Error('Restaurant lookup failed');
 }
 
 $('btn-build-deck').onclick = async () => {
   if (!session) return;
   const wantRestaurants = $('toggle-restaurants').checked;
   const wantRecipes = $('toggle-recipes').checked;
-  const radiusKm = parseInt($('radius-select').value, 10);
+  const radiusMi = parseInt($('radius-select').value, 10);
   $('deck-status').textContent = 'Building deck…';
   $('btn-build-deck').disabled = true;
 
@@ -227,12 +256,16 @@ $('btn-build-deck').onclick = async () => {
       if (!coords) {
         toast('Location blocked — deck has recipes only. Allow location for restaurants.');
       } else {
-        const spots = await fetchRestaurants(coords.lat, coords.lon, radiusKm);
+        const spots = await fetchRestaurants(coords.lat, coords.lon, radiusMi);
         deck.push(...spots);
-        if (spots.length === 0) toast('No restaurants found nearby — try a bigger radius.');
+        if (spots.length === 0) {
+          toast(radiusMi >= 50
+            ? 'No restaurants found within 50 miles — the map lookup may be thin here. Try recipes or a retry.'
+            : `No restaurants found within ${radiusMi} miles — try a bigger radius.`);
+        }
       }
     } catch (e) {
-      toast('Restaurant lookup hiccup — deck has recipes only.');
+      toast('Restaurant lookup failed (map servers busy) — deck has recipes only. Hit Build deck again to retry.');
     }
   }
 
@@ -329,7 +362,7 @@ function showCard(card) {
   $('card-name').textContent = card.name;
   $('card-detail').textContent = card.detail || (card.cuisine ? card.cuisine.charAt(0).toUpperCase() + card.cuisine.slice(1) : '');
   $('card-meta').textContent = [
-    card.distance != null ? `${card.distance.toFixed(1)} km away` : '',
+    card.distanceMi != null ? `${card.distanceMi.toFixed(1)} mi away` : '',
     card.address || '',
   ].filter(Boolean).join(' · ');
 }
@@ -385,7 +418,7 @@ function showMatch(match) {
   $('match-name').textContent = card.name;
   $('match-detail').textContent = card.detail || (card.cuisine ? card.cuisine.charAt(0).toUpperCase() + card.cuisine.slice(1) : '');
   $('match-meta').textContent = [
-    card.distance != null ? `${card.distance.toFixed(1)} km away` : '',
+    card.distanceMi != null ? `${card.distanceMi.toFixed(1)} mi away` : '',
     card.address || '',
   ].filter(Boolean).join(' · ');
   $('match-how').textContent = match.unanimous
