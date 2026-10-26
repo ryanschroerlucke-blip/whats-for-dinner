@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.19.2","ws":"^8.17.1"},"description":"What's for Dinner — swipe-to-decide group dinner app backend","main":"server.js","name":"whats-for-dinner-server","scripts":{"start":"node server.js"},"version":"1.0.0"}
