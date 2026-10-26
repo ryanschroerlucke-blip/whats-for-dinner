@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#ff6b35">
+<title>What's for Dinner?</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════ HOME ══════════ -->
+  <section id="screen-home" class="screen active">
+    <div class="logo">🍽️</div>
+    <h1>What's for Dinner?</h1>
+    <p class="tagline">Swipe. Match. Eat. No more "I don't care, you pick."</p>
+
+    <div class="card">
+      <label>Your name</label>
+      <input id="home-name" type="text" placeholder="e.g. Ryan" maxlength="24" autocomplete="name">
+      <button id="btn-create" class="btn primary">Create a group</button>
+      <div class="divider"><span>or</span></div>
+      <div class="join-row">
+        <input id="join-code" type="text" placeholder="Group code" maxlength="4" autocapitalize="characters">
+        <button id="btn-join" class="btn secondary">Join</button>
+      </div>
+      <p class="hint">Share the code or QR code — friends join from their own phones.</p>
+    </div>
+
+    <button id="btn-recipes" class="btn ghost">🍳 My home recipes</button>
+  </section>
+
+  <!-- ══════════ LOBBY ══════════ -->
+  <section id="screen-lobby" class="screen">
+    <h2>Group <span id="lobby-code" class="code"></span></h2>
+    <div id="lobby-qr" class="qr-box"></div>
+    <p class="hint">Friends scan this or enter the code above.</p>
+
+    <h3>Players (<span id="player-count">1</span>)</h3>
+    <ul id="player-list" class="player-list"></ul>
+    <div id="add-player-row" class="join-row">
+      <input id="add-player-name" type="text" placeholder="Add a player (pass-the-phone)" maxlength="24">
+      <button id="btn-add-player" class="btn secondary">Add</button>
+    </div>
+    <p class="hint">No phone? Add them here — you'll pass this device around.</p>
+
+    <h3>What's in the deck?</h3>
+    <div class="card toggles">
+      <label class="toggle-row">
+        <input type="checkbox" id="toggle-restaurants" checked>
+        <span>🍔 Nearby restaurants &amp; fast food</span>
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" id="toggle-recipes" checked>
+        <span>🍳 My home recipes</span>
+      </label>
+      <label class="toggle-row">
+        <span>Search radius</span>
+        <select id="radius-select">
+          <option value="5">5 km</option>
+          <option value="10" selected>10 km</option>
+          <option value="25">25 km</option>
+          <option value="50">50 km</option>
+        </select>
+      </label>
+    </div>
+    <p id="deck-status" class="hint"></p>
+
+    <button id="btn-build-deck" class="btn secondary">🔄 Build deck</button>
+    <button id="btn-start" class="btn primary">Start swiping →</button>
+    <button id="btn-lobby-back" class="btn ghost">← Back</button>
+  </section>
+
+  <!-- ══════════ SWIPE ══════════ -->
+  <section id="screen-swipe" class="screen">
+    <div class="swipe-header">
+      <span id="swipe-player">Your turn</span>
+      <span id="swipe-progress"></span>
+    </div>
+    <div id="pass-banner" class="pass-banner hidden">
+      ✋ Pass the phone to <strong id="pass-name"></strong>, then tap "I'm ready"
+      <button id="btn-ready" class="btn primary small">I'm ready</button>
+    </div>
+    <div id="deck-area" class="deck-area">
+      <div id="swipe-card" class="swipe-card">
+        <div class="card-badge" id="card-badge"></div>
+        <div class="card-emoji" id="card-emoji">🍔</div>
+        <h2 id="card-name"></h2>
+        <p id="card-detail"></p>
+        <p id="card-meta" class="card-meta"></p>
+      </div>
+      <div class="no-more hidden" id="no-more">
+        <p>🎉 You've swiped them all!</p>
+        <p class="hint">Waiting on everyone else to finish…</p>
+      </div>
+    </div>
+    <div class="swipe-buttons">
+      <button id="btn-no" class="btn swipe-no">✕ Pass</button>
+      <button id="btn-yes" class="btn swipe-yes">♥ Yes!</button>
+    </div>
+    <p class="hint">Or drag the card left / right.</p>
+  </section>
+
+  <!-- ══════════ MATCH ══════════ -->
+  <section id="screen-match" class="screen">
+    <div class="match-burst">🎉</div>
+    <h1>It's decided!</h1>
+    <div class="card match-card">
+      <div class="card-emoji big" id="match-emoji">🍔</div>
+      <h2 id="match-name"></h2>
+      <p id="match-detail"></p>
+      <p id="match-meta" class="card-meta"></p>
+      <p id="match-how" class="hint"></p>
+    </div>
+    <div id="match-actions">
+      <a id="match-maps" class="btn primary" target="_blank" rel="noopener">🗺️ Directions</a>
+      <button id="btn-again" class="btn secondary">Play again</button>
+    </div>
+  </section>
+
+  <!-- ══════════ RECIPES ══════════ -->
+  <section id="screen-recipes" class="screen">
+    <h2>🍳 My home recipes</h2>
+    <p class="hint">These go into the deck alongside restaurants.</p>
+    <div class="card">
+      <input id="recipe-name" type="text" placeholder="Recipe name (e.g. Taco Tuesday)" maxlength="60">
+      <input id="recipe-detail" type="text" placeholder="Details (e.g. beef, 30 min)" maxlength="120">
+      <button id="btn-add-recipe" class="btn primary">Add recipe</button>
+    </div>
+    <ul id="recipe-list" class="recipe-list"></ul>
+    <button id="btn-recipes-back" class="btn ghost">← Back</button>
+  </section>
+
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>

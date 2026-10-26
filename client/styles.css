@@ -1,0 +1,130 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --orange: #ff6b35;
+  --green: #2ecc71;
+  --red: #e74c3c;
+  --bg: #fff8f3;
+  --card-bg: #ffffff;
+  --text: #2d2d2d;
+  --muted: #888;
+  --radius: 16px;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+}
+#app { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+.screen { display: none; }
+.screen.active { display: block; animation: fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.logo { font-size: 64px; text-align: center; margin: 12px 0 4px; }
+h1 { text-align: center; font-size: 28px; margin-bottom: 6px; }
+h2 { font-size: 22px; margin: 18px 0 10px; }
+h3 { font-size: 16px; margin: 18px 0 8px; }
+.tagline { text-align: center; color: var(--muted); margin-bottom: 20px; font-size: 15px; }
+.hint { color: var(--muted); font-size: 13px; text-align: center; margin-top: 10px; line-height: 1.4; }
+.code {
+  background: var(--orange); color: #fff; padding: 2px 12px;
+  border-radius: 8px; letter-spacing: 3px; font-size: 22px;
+}
+
+.card {
+  background: var(--card-bg); border-radius: var(--radius);
+  padding: 18px; box-shadow: 0 2px 12px rgba(0,0,0,.08); margin-bottom: 14px;
+}
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #555; }
+input[type="text"], select {
+  width: 100%; padding: 12px; border: 2px solid #eee; border-radius: 10px;
+  font-size: 16px; margin-bottom: 12px; background: #fff;
+}
+input[type="text"]:focus, select:focus { outline: none; border-color: var(--orange); }
+
+.btn {
+  display: block; width: 100%; padding: 14px; border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 10px;
+  text-decoration: none; text-align: center;
+}
+.btn.primary { background: var(--orange); color: #fff; }
+.btn.secondary { background: #2d2d2d; color: #fff; }
+.btn.ghost { background: transparent; color: var(--orange); border: 2px solid var(--orange); }
+.btn.small { width: auto; display: inline-block; padding: 8px 20px; margin: 10px 0 0; }
+.btn:disabled { opacity: .45; cursor: default; }
+
+.divider { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--muted); font-size: 13px; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #eee; }
+.join-row { display: flex; gap: 10px; }
+.join-row input { flex: 1; margin-bottom: 0; }
+.join-row .btn { width: auto; padding: 12px 22px; margin-bottom: 0; }
+
+.qr-box {
+  background: #fff; border-radius: var(--radius); padding: 16px;
+  display: flex; justify-content: center; box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  min-height: 180px; align-items: center;
+}
+.qr-box img { max-width: 170px; height: auto; }
+
+.player-list, .recipe-list { list-style: none; margin-bottom: 8px; }
+.player-list li, .recipe-list li {
+  background: #fff; padding: 11px 14px; border-radius: 10px;
+  margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 1px 5px rgba(0,0,0,.06); font-size: 15px;
+}
+.player-list .host-tag { background: var(--orange); color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+.recipe-list .del { background: none; border: none; color: var(--red); font-size: 18px; cursor: pointer; padding: 4px 8px; }
+
+.toggles .toggle-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-weight: 500;
+}
+.toggles .toggle-row:last-child { border-bottom: none; }
+.toggles input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--orange); }
+.toggles select { width: auto; margin-bottom: 0; padding: 8px; }
+
+/* ── Swipe screen ── */
+.swipe-header { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 14px; font-size: 15px; }
+.pass-banner {
+  background: #fff3cd; border: 2px solid #ffc107; border-radius: 12px;
+  padding: 16px; text-align: center; margin-bottom: 14px; font-size: 15px;
+}
+.pass-banner.hidden, .hidden { display: none !important; }
+.deck-area { position: relative; min-height: 380px; display: flex; align-items: stretch; }
+.swipe-card {
+  flex: 1; background: #fff; border-radius: 20px; padding: 24px 20px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.12); text-align: center;
+  display: flex; flex-direction: column; justify-content: center;
+  touch-action: pan-y; transition: transform .18s ease, opacity .18s ease;
+  will-change: transform; cursor: grab; user-select: none; -webkit-user-select: none;
+}
+.swipe-card.dragging { transition: none; cursor: grabbing; }
+.card-badge {
+  display: inline-block; margin: 0 auto 12px; padding: 4px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+}
+.card-badge.restaurant { background: #ffe8dd; color: #c2410c; }
+.card-badge.recipe { background: #dcfce7; color: #15803d; }
+.card-badge.featured { background: #fef3c7; color: #92400e; }
+.card-emoji { font-size: 72px; margin-bottom: 12px; }
+.card-emoji.big { font-size: 96px; }
+.swipe-card h2 { font-size: 24px; margin-bottom: 8px; }
+.swipe-card p { color: #555; font-size: 15px; line-height: 1.45; }
+.card-meta { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.no-more { flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center; font-size: 18px; }
+.swipe-buttons { display: flex; gap: 14px; margin-top: 20px; }
+.swipe-buttons .btn { margin-bottom: 0; padding: 18px; font-size: 18px; }
+.btn.swipe-no { background: #fff; color: var(--red); border: 3px solid var(--red); }
+.btn.swipe-yes { background: var(--green); color: #fff; }
+
+/* ── Match screen ── */
+.match-burst { font-size: 80px; text-align: center; margin: 20px 0 8px; animation: pop .5s ease; }
+@keyframes pop { 0% { transform: scale(.4); } 70% { transform: scale(1.2); } 100% { transform: scale(1); } }
+.match-card { text-align: center; padding: 28px 20px; }
+.match-card h2 { font-size: 26px; }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #2d2d2d; color: #fff; padding: 12px 22px; border-radius: 30px;
+  font-size: 14px; z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+}
