@@ -16,11 +16,11 @@ const API = {
 };
 
 // ── State ──────────────────────────────────────────────────────────────────
-let session = null;          // server session state
-let myId = null;             // my primary player id
-let myPlayers = [];          // player ids on THIS device (pass-the-phone)
-let localIdx = 0;            // which of myPlayers is currently swiping
-let cardIdx = 0;             // current card index for the active local player
+let session = null;
+let myId = null;
+let myPlayers = [];
+let localIdx = 0;
+let cardIdx = 0;
 let ws = null;
 let deckBuilt = false;
 
@@ -127,7 +127,6 @@ function enterLobby() {
   renderLobby();
   show('screen-lobby');
   connectWS();
-  // QR code for joining
   const qrBox = $('lobby-qr');
   qrBox.innerHTML = '';
   const joinUrl = `${location.origin}${location.pathname}?code=${session.code}`;
@@ -153,7 +152,6 @@ $('btn-add-player').onclick = async () => {
   const name = $('add-player-name').value.trim();
   if (!name) return toast('Enter a name for this player');
   try {
-    // Pass-the-phone players join via the normal join endpoint; we keep their id locally.
     const data = await API.post(`/api/session/${session.code}/join`, { name });
     myPlayers.push(data.playerId);
     session = data.state;
@@ -165,14 +163,26 @@ $('btn-add-player').onclick = async () => {
 
 // ── Deck building ──────────────────────────────────────────────────────────
 async function getCoords() {
-  // Try browser geolocation first
+  // Returns { lat, lon } or { error: 'denied' | 'timeout' | 'unavailable' }.
+  // iOS only asks for location once — a past denial never re-prompts, it just fails.
   try {
     const pos = await new Promise((resolve, reject) => {
-      if (!navigator.geolocation) return reject(new Error('No geolocation'));
+      if (!navigator.geolocation) return reject({ code: 0 });
       navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
     });
-    return { lat: pos.coords.latitude, lon: pos.coords.longitude, source: 'gps' };
-  } catch { return null; }
+    return { lat: pos.coords.latitude, lon: pos.coords.longitude };
+  } catch (e) {
+    return { error: e.code === 1 ? 'denied' : e.code === 3 ? 'timeout' : 'unavailable' };
+  }
+}
+
+// Manual location fallback: type a town/ZIP instead of sharing GPS (Nominatim, free, no key).
+async function geocodeLocation(q) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(q)}`);
+  if (!r.ok) throw new Error('Lookup failed');
+  const data = await r.json();
+  if (!data.length) throw new Error('Place not found');
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), label: data[0].display_name.split(',').slice(0, 2).join(', ') };
 }
 
 const OVERPASS_INSTANCES = [
@@ -183,7 +193,6 @@ const OVERPASS_INSTANCES = [
 
 async function fetchRestaurants(lat, lon, radiusMiles) {
   const radiusM = Math.round(radiusMiles * 1609.34);
-  // Bigger areas need more server time; cap the query timeout sensibly.
   const queryTimeout = radiusMiles >= 25 ? 60 : 30;
   const query = `[out:json][timeout:${queryTimeout}];(node["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon});way["amenity"~"restaurant|fast_food"](around:${radiusM},${lat},${lon}););out center tags;`;
 
@@ -201,7 +210,6 @@ async function fetchRestaurants(lat, lon, radiusMiles) {
       clearTimeout(timer);
       if (!r.ok) throw new Error(`Map server returned ${r.status}`);
       const data = await r.json();
-      // Overpass reports timeouts/overloads in `remark` with no elements — treat as failure, not "0 results".
       if (data.remark && (!data.elements || data.elements.length === 0)) {
         throw new Error('Map query timed out on the server');
       }
@@ -220,7 +228,7 @@ async function fetchRestaurants(lat, lon, radiusMiles) {
             address: [el.tags['addr:street'], el.tags['addr:city']].filter(Boolean).join(', '),
             lat: plat, lon: plon,
             distanceMi: distKm != null ? distKm * 0.621371 : null,
-            featured: false, // v2 monetization slot: paid featured restaurants sort first
+            featured: false,
           };
         })
         .sort((a, b) => (a.distanceMi ?? 999) - (b.distanceMi ?? 999))
@@ -228,7 +236,6 @@ async function fetchRestaurants(lat, lon, radiusMiles) {
       return spots;
     } catch (e) {
       lastError = e;
-      // Try the next mirror; if all fail, the caller reports it.
     }
   }
   throw lastError || new Error('Restaurant lookup failed');
@@ -243,19 +250,38 @@ $('btn-build-deck').onclick = async () => {
   $('btn-build-deck').disabled = true;
 
   let deck = [];
-  // Recipes first (they're personal, always available)
   if (wantRecipes) {
     deck.push(...getRecipes().map(r => ({
       id: 'h-' + r.id, type: 'recipe', name: r.name, detail: r.detail || 'Home recipe', featured: false,
     })));
   }
-  // Restaurants from maps
+  // Restaurants from maps — manual town/ZIP first (no permission needed), else GPS.
+  let locationBlocked = false;
   if (wantRestaurants) {
-    try {
-      const coords = await getCoords();
-      if (!coords) {
-        toast('Location blocked — deck has recipes only. Allow location for restaurants.');
+    let coords = null;
+    const manual = $('manual-location').value.trim();
+    if (manual) {
+      try {
+        coords = await geocodeLocation(manual);
+      } catch (e) {
+        toast(`Couldn't find "${manual}" — check the spelling, or clear it to use GPS instead.`);
+      }
+    }
+    if (!coords) {
+      const got = await getCoords();
+      if (got.error) {
+        if (got.error === 'denied') {
+          locationBlocked = true;
+          $('deck-status').textContent = 'Location is blocked for this app — your phone won\'t ask again. On your iPhone: Settings → Privacy & Security → Location Services → What\'s for Dinner? → "While Using the App". Then tap Build deck again. (Or type a town above — no permission needed.)';
+        } else {
+          toast('Couldn\'t get your location — make sure Location Services is on, then try again. Or type a town above.');
+        }
       } else {
+        coords = got;
+      }
+    }
+    if (coords) {
+      try {
         const spots = await fetchRestaurants(coords.lat, coords.lon, radiusMi);
         deck.push(...spots);
         if (spots.length === 0) {
@@ -263,13 +289,12 @@ $('btn-build-deck').onclick = async () => {
             ? 'No restaurants found within 50 miles — the map lookup may be thin here. Try recipes or a retry.'
             : `No restaurants found within ${radiusMi} miles — try a bigger radius.`);
         }
+      } catch (e) {
+        toast('Restaurant lookup failed (map servers busy) — deck has recipes only. Hit Build deck again to retry.');
       }
-    } catch (e) {
-      toast('Restaurant lookup failed (map servers busy) — deck has recipes only. Hit Build deck again to retry.');
     }
   }
 
-  // Featured first (v2 monetization), then shuffle the rest
   const featured = deck.filter(c => c.featured);
   const rest = deck.filter(c => !c.featured);
   for (let i = rest.length - 1; i > 0; i--) {
@@ -279,7 +304,7 @@ $('btn-build-deck').onclick = async () => {
   deck = [...featured, ...rest];
 
   if (deck.length === 0) {
-    $('deck-status').textContent = 'Deck is empty — add a recipe or allow location.';
+    if (!locationBlocked) $('deck-status').textContent = 'Deck is empty — add a recipe or allow location.';
     $('btn-build-deck').disabled = false;
     return;
   }
@@ -316,10 +341,8 @@ function renderSwipe() {
   const done = (session.progress[pid] || 0);
   const total = session.deck.length;
 
-  // This local player finished the deck
   if (done >= total) {
     if (localIdx < myPlayers.length - 1) {
-      // Pass the phone to the next local player
       localIdx++;
       $('pass-name').textContent = session.players.find(p => p.id === activePlayerId())?.name || 'next player';
       $('pass-banner').classList.remove('hidden');
@@ -329,7 +352,6 @@ function renderSwipe() {
       $('swipe-progress').textContent = '';
       return;
     }
-    // All my local players done — wait for remote players / match
     $('pass-banner').classList.add('hidden');
     $('deck-area').style.display = 'none';
     document.querySelector('.swipe-buttons').style.display = 'none';
@@ -405,7 +427,6 @@ $('btn-no').onclick = () => swipe('no');
   el.addEventListener('pointercancel', end);
 })();
 
-// If server state changed (e.g. a remote player triggered a match), keep UI honest
 function maybeAdvance() {
   if (session?.status === 'matched' && session.match) { showMatch(session.match); return; }
   if (document.querySelector('#screen-swipe.active')) renderSwipe();
@@ -467,7 +488,6 @@ $('btn-add-recipe').onclick = () => {
   toast('Recipe added!');
 };
 
-// Register service worker for installability
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
